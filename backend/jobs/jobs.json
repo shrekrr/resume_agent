@@ -1,0 +1,23 @@
+[
+    {
+        "id": 1,
+        "role": "backend",
+        "title": "Backend Developer",
+        "description": "Looking for a backend developer with Java, Spring Boot, REST APIs, and SQL.",
+        "hr_email": "hr@company1.com"
+    },
+    {
+        "id": 2,
+        "role": "backend",
+        "title": "Junior Backend Engineer",
+        "description": "Node.js backend role requiring Express, MongoDB, and API development.",
+        "hr_email": "hr@company2.com"
+    },
+    {
+        "id": 3,
+        "role": "frontend",
+        "title": "Frontend Developer",
+        "description": "React, HTML, CSS, and JavaScript experience required.",
+        "hr_email": "hr@company3.com"
+    }
+]
