@@ -8,6 +8,14 @@ app = FastAPI()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 job_sessions = {}
+user_state = {
+    "resume_uploaded": False,
+    "role_selected": False,
+    "job_liked": False,
+    "resume_approved": False,
+    "resume": None,
+    "current_job": None
+}
 
 class RoleEnum(str, Enum):
     backend = "backend"
@@ -15,47 +23,20 @@ class RoleEnum(str, Enum):
     ml = "ml"
     devops = "devops"
 
-@app.post("/select-role")
-def select_role(role: RoleEnum):
-    jobs = get_jobs_by_role(role.value)
-    job_sessions["current"] = {
-        "jobs": jobs,
-        "index": 0,
-        "liked": []
-    }
-    return {"message": f"{len(jobs)} jobs loaded"}
-
-
-@app.get("/job")
-def get_job():
-    session = job_sessions.get("current")
-    if not session:
-        return {"error": "Role not selected"}
-
-    job = get_next_job(session["jobs"], session["index"])
-    if not job:
-        return {"message": "No more jobs"}
-
-    return job
-
-@app.post("/swipe")
-def swipe(action: str):
-    session = job_sessions.get("current")
-    if not session:
-        return {"error": "Role not selected"}
-
-    if action == "like":
-        session["liked"].append(
-            session["jobs"][session["index"]]
-        )
-
-    session["index"] += 1
-    return {"message": f"Job {action}d"}
-@app.get("/")
+@app.get(
+    "/",
+    tags=["System"],
+    summary="Health check",
+    include_in_schema=False
+)
 def root():
-    return {"message": "Backend is running 🚀"}
+    return {"message": "Backend is running ??"}
 
-@app.post("/upload-resume")
+@app.post(
+    "/upload-resume",
+    tags=["Resume"],
+    summary="Upload and parse resume"
+)
 async def upload_resume(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_DIR, file.filename)
 
@@ -70,26 +51,28 @@ async def upload_resume(file: UploadFile = File(...)):
         return {"error": "Unsupported file format"}
 
     structured = structure_resume(text)
+    user_state["resume"] = structured
+    user_state["resume_uploaded"] = True
 
     return {
         "message": "Resume parsed successfully",
         "resume": structured
     }
 
-
-@app.post("/apply")
-def apply():
-    return {"status": "application sent"}
-
-@app.get("/resume-suggestions")
+@app.get(
+    "/resume-suggestions",
+    tags=["Resume"],
+    summary="Get job-specific resume suggestions"
+)
 def resume_suggestions():
+    if not user_state.get("job_liked"):
+        return {"error": "Like a job before requesting suggestions"}
+
     resume = user_state.get("resume")
     job = user_state.get("current_job")
 
     if not resume or not job:
-        return {
-            "error": "Resume not uploaded or job not liked yet"
-        }
+        return {"error": "Resume not uploaded or job not liked yet"}
 
     return {
         "job_title": job["title"],
@@ -109,3 +92,87 @@ def resume_suggestions():
         }
     }
 
+@app.post(
+    "/approve-resume",
+    tags=["Resume"],
+    summary="Approve resume after review"
+)
+def approve_resume():
+    if not user_state.get("job_liked"):
+        return {"error": "Generate suggestions before approving resume"}
+
+    if not user_state.get("resume") or not user_state.get("current_job"):
+        return {"error": "Resume or job data missing"}
+
+    user_state["resume_approved"] = True
+    return {"message": "Resume approved"}
+
+@app.post(
+    "/select-role",
+    tags=["Jobs"],
+    summary="Select target job role"
+)
+def select_role(role: RoleEnum):
+    if not user_state.get("resume_uploaded"):
+        return {"error": "Resume must be uploaded before selecting a role"}
+
+    jobs = get_jobs_by_role(role.value)
+    job_sessions["current"] = {
+        "jobs": jobs,
+        "index": 0,
+        "liked": []
+    }
+    user_state["role_selected"] = True
+    return {"message": f"{len(jobs)} jobs loaded"}
+
+@app.get(
+    "/job",
+    tags=["Jobs"],
+    operation_id="get_next_job",
+    summary="Get next job recommendation"
+)
+def get_job():
+    if not user_state.get("role_selected"):
+        return {"error": "Role must be selected before fetching jobs"}
+
+    session = job_sessions.get("current")
+    if not session:
+        return {"error": "Role not selected"}
+
+    job = get_next_job(session["jobs"], session["index"])
+    if not job:
+        return {"message": "No more jobs"}
+
+    return job
+
+@app.post(
+    "/swipe",
+    tags=["Jobs"],
+    summary="Like or reject current job"
+)
+def swipe(action: str):
+    if not user_state.get("role_selected"):
+        return {"error": "Role must be selected before swiping"}
+
+    session = job_sessions.get("current")
+    if not session:
+        return {"error": "Role not selected"}
+
+    if action == "like":
+        liked_job = session["jobs"][session["index"]]
+        session["liked"].append(liked_job)
+        user_state["current_job"] = liked_job
+        user_state["job_liked"] = True
+
+    session["index"] += 1
+    return {"message": f"Job {action}d"}
+
+@app.post(
+    "/apply",
+    tags=["Application"],
+    summary="Apply for selected job"
+)
+def apply():
+    if not user_state.get("resume_approved"):
+        return {"error": "Resume must be approved before applying"}
+    return {"message": "application sent"}
