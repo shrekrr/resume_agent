@@ -14,7 +14,8 @@ user_state = {
     "job_liked": False,
     "resume_approved": False,
     "resume": None,
-    "current_job": None
+    "current_job": None,
+    "resume_diffs": None
 }
 
 class RoleEnum(str, Enum):
@@ -23,6 +24,22 @@ class RoleEnum(str, Enum):
     ml = "ml"
     devops = "devops"
 
+def generate_resume_diffs(resume, job):
+    skills_text = (resume or {}).get("skills", "").strip()
+    suggested_skills = skills_text + (", REST APIs" if skills_text else "REST APIs")
+    return {
+        "skills": [
+            {
+                "original": skills_text,
+                "suggested": suggested_skills,
+                "reason": "Backend job emphasizes APIs",
+                "approved": False
+            }
+        ],
+        "projects": [],
+        "experience": []
+    }
+
 @app.get(
     "/",
     tags=["System"],
@@ -30,7 +47,7 @@ class RoleEnum(str, Enum):
     include_in_schema=False
 )
 def root():
-    return {"message": "Backend is running ??"}
+    return {"message": "Backend is running 🚀"}
 
 @app.post(
     "/upload-resume",
@@ -74,23 +91,9 @@ def resume_suggestions():
     if not resume or not job:
         return {"error": "Resume not uploaded or job not liked yet"}
 
-    return {
-        "job_title": job["title"],
-        "job_description": job["description"],
-        "suggestions": {
-            "skills": [
-                "Highlight backend technologies relevant to the role",
-                "Align skills section with job keywords"
-            ],
-            "projects": [
-                "Emphasize APIs, databases, and server-side logic",
-                "Use action verbs aligned with backend responsibilities"
-            ],
-            "experience": [
-                "Rephrase bullets to show impact and scalability"
-            ]
-        }
-    }
+    diffs = generate_resume_diffs(resume, job)
+    user_state["resume_diffs"] = diffs
+    return diffs
 
 @app.post(
     "/approve-resume",
@@ -98,11 +101,8 @@ def resume_suggestions():
     summary="Approve resume after review"
 )
 def approve_resume():
-    if not user_state.get("job_liked"):
-        return {"error": "Generate suggestions before approving resume"}
-
-    if not user_state.get("resume") or not user_state.get("current_job"):
-        return {"error": "Resume or job data missing"}
+    if not user_state.get("resume_diffs"):
+        return {"error": "No suggestions to approve"}
 
     user_state["resume_approved"] = True
     return {"message": "Resume approved"}
